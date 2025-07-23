@@ -9094,6 +9094,40 @@
     "requires": [],
     "version": "0.79.9"
   },
+  
+  "photo-editor": {
+    "version": "2.5",
+    "requires": [
+      "openssl-1.1",
+      "qt5"
+    ]
+  },
+  "video-encoder": {
+    "version": "4.0",
+    "requires": [
+      "openssl-3.0",
+      "ffmpeg"
+    ]
+  },
+  "qt5": {
+    "version": "5.15",
+    "requires": []
+  },
+  "ffmpeg": {
+    "version": "4.4",
+    "requires": []
+  },
+  "openssl-1.1": {
+    "version": "1.1.1t",
+    "base_package": "openssl",
+    "requires": []
+  },
+  "openssl-3.0": {
+    "version": "3.0.8",
+    "base_package": "openssl",
+    "requires": []
+  },
+
   "dvdrip": {
     "requires": [
       "perl-event",

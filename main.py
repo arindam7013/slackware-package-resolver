@@ -60,7 +60,7 @@ def handle_installation_session(resolver):
         print(f"\n {e}")
 
 def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_mode):
-    """Resolves dependencies and either simulates or performs the installation."""
+    """Resolves, downloads, and installs packages."""
     print(f"\n  Resolving dependencies for: {', '.join(packages_to_install)}...")
     
     install_order = []
@@ -77,18 +77,26 @@ def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_m
     print(" -> ".join(install_order))
 
     if run_mode:
-        print("\n RUN MODE ACTIVATED. Attempting real installation... ")
-        print("This requires sudo/root privileges and assumes package files are available.")
+        # --- START OF NEW DOWNLOAD LOGIC ---
+        print("\n Downloading required packages...")
         for package in install_order:
-            # This command uses a wildcard to find the package file. It assumes a standard SBo naming convention.
-            command = f"sudo installpkg {package}-*.t?z"
+            print(f"Downloading: {package}")
+            # Use slackpkg to download the package into /var/cache/packages/
+            download_command = f"sudo slackpkg download {package}"
+            os.system(download_command)
+        print(" Downloads complete.")
+        # --- END OF NEW DOWNLOAD LOGIC ---
+
+        print("\n RUN MODE ACTIVATED. Attempting real installation... 🚨")
+        for package in install_order:
+            # Modify the command to install from the slackpkg cache directory
+            command = f"sudo installpkg /var/cache/packages/{package}-*.t?z"
             print(f"Executing: {command}")
-            # For safety, the actual execution is commented out.
-            # Uncomment the line below to run it for real on a Slackware system.
-            # os.system(command)
+            os.system(command)
         print("\n Installation commands executed.")
     else:
-        print("\n(This was a simulation. To install for real, select 'yes' at the prompt.)")
+        print("\n(This was a simulation. To download and install for real, select 'yes'.)")
+
 
 def main():
     """Runs the main menu loop for the application."""
