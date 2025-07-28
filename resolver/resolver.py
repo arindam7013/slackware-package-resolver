@@ -2,13 +2,17 @@ import json
 import networkx as nx
 from pysat.solvers import Glucose3
 from itertools import combinations
+from pathlib import Path
+import re
+import os
 
 class Resolver:
-    def __init__(self, db_path='database.json'):
+    def __init__(self, db_path='database.json', sbo_path='../slackbuilds'):
         """Initializes the resolver by loading the package database."""
         with open(db_path, 'r') as f:
             self.db = json.load(f)
         self.graph = self._build_dependency_graph()
+        self.sbo_path = Path(sbo_path)
 
     def _build_dependency_graph(self):
         """Builds a directed graph from the dependency database."""
@@ -18,23 +22,62 @@ class Resolver:
             for dependency in details.get('requires', []):
                 G.add_edge(package, dependency)
         return G
+    
+    def find_package_dynamically(self, package_name):
+        """Searches the SBo repo for a package not in the main DB."""
+        if not self.sbo_path.is_dir():
+            return False
+
+        for category in self.sbo_path.iterdir():
+            if category.is_dir():
+                package_dir = category / package_name
+                info_file = package_dir / f"{package_name}.info"
+                if info_file.is_file():
+                    # Found the package, now parse it
+                    parsed_info = self._parse_info_file(info_file)
+                    if "PRGNAM" in parsed_info:
+                        pkg_name = parsed_info["PRGNAM"]
+                        deps = [dep for dep in parsed_info.get("REQUIRES", "").split() if not dep.startswith('%')]
+                        
+                        # Add to our current session's database and graph
+                        self.db[pkg_name] = {"version": parsed_info.get("VERSION", "N/A"), "requires": deps}
+                        self.graph.add_node(pkg_name)
+                        for dep in deps:
+                            self.graph.add_edge(pkg_name, dep)
+                        return True
+        return False
+
+    def _parse_info_file(self, file_path):
+        """Parses a .info file to extract details."""
+        info = {}
+        keys_to_find = ["PRGNAM", "VERSION", "REQUIRES"]
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                match = re.match(r'^\s*([A-Z_]+)\s*=\s*"(.*)"\s*$', line.strip())
+                if match:
+                    key, value = match.groups()
+                    if key in keys_to_find:
+                        info[key] = value
+        return info
+
+    def _ensure_packages_exist(self, packages):
+        """Checks if packages exist, trying a dynamic search as a fallback."""
+        for pkg in packages:
+            if pkg not in self.db:
+                print(f"'{pkg}' not in database, searching SBo repository...")
+                if not self.find_package_dynamically(pkg):
+                    raise ValueError(f"Package '{pkg}' not found in database or SBo repository.")
 
     def resolve_with_topsort(self, packages_to_install):
-        """
-        Resolves dependencies using a simple topological sort.
-        Fails if there are any circular dependencies.
-        """
+        """Resolves dependencies using a simple topological sort."""
+        self._ensure_packages_exist(packages_to_install)
         nodes_to_include = set()
         for pkg in packages_to_install:
-            if pkg not in self.graph:
-                raise ValueError(f"Package '{pkg}' not found in the database.")
             nodes_to_include.add(pkg)
             nodes_to_include.update(nx.descendants(self.graph, pkg))
         
         subgraph = self.graph.subgraph(nodes_to_include)
         try:
-            # The networkx topological_sort gives packages with no dependencies first.
-            # We must reverse the list to get the correct installation order.
             install_order = list(nx.topological_sort(subgraph))
             install_order.reverse()
             return install_order
@@ -42,22 +85,20 @@ class Resolver:
             raise RuntimeError("Topological sort failed. The request contains a circular dependency.")
 
     def resolve_with_sat(self, packages_to_install):
-        """
-        Resolves dependencies using a SAT solver for complex cases.
-        """
+        """Resolves dependencies using a SAT solver for complex cases."""
+        self._ensure_packages_exist(packages_to_install)
+        # The rest of the SAT solver logic remains the same...
         pkg_to_int = {pkg: i + 1 for i, pkg in enumerate(self.db.keys())}
         int_to_pkg = {i + 1: pkg for i, pkg in enumerate(self.db.keys())}
         
         clauses = []
 
         for pkg in packages_to_install:
-            if pkg not in pkg_to_int:
-                raise ValueError(f"Package '{pkg}' not found in the database.")
             clauses.append([pkg_to_int[pkg]])
 
         for pkg, details in self.db.items():
             for dep in details.get('requires', []):
-                if dep in pkg_to_int: # Ensure dependency exists in db
+                if dep in pkg_to_int:
                     clauses.append([-pkg_to_int[pkg], pkg_to_int[dep]])
         
         base_packages = {}
@@ -74,14 +115,12 @@ class Resolver:
             if solver.solve():
                 model = solver.get_model()
                 solution_packages = [int_to_pkg[i] for i in model if i > 0]
-                
-                # Topologically sort the final result for correct install order
                 subgraph = self.graph.subgraph(solution_packages)
                 install_order = list(nx.topological_sort(subgraph))
                 install_order.reverse()
                 return install_order
             else:
-                # Logic to generate a detailed conflict report
+                # Conflict explanation logic
                 conflict_report = "SAT solver found a conflict!\n"
                 from collections import defaultdict
                 deps_of_requests = {}
@@ -108,8 +147,7 @@ class Resolver:
 
     def explain(self, package_name):
         """Generates a human-readable explanation of the dependency tree."""
-        if package_name not in self.graph:
-            raise ValueError(f"Package '{package_name}' not found in the database.")
+        self._ensure_packages_exist([package_name])
         nodes_to_include = nx.descendants(self.graph, package_name)
         nodes_to_include.add(package_name)
         subgraph = self.graph.subgraph(nodes_to_include)

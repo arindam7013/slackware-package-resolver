@@ -14,7 +14,6 @@ def list_all_packages(resolver):
     """Prints a formatted list of all available packages."""
     print("\n Available packages:")
     packages = resolver.list_packages()
-    # Prints packages in 4 neat columns
     for i in range(0, len(packages), 4):
         print("    ".join(f"{p:<18}" for p in packages[i:i+4]))
 
@@ -50,10 +49,9 @@ def handle_installation_session(resolver):
             print("\n Invalid solver choice. Aborting.")
             return
 
-        run_confirm = input("Perform real installation (requires root)? (yes/no) [default: no]: ").strip().lower()
+        run_confirm = input("Perform real installation? (yes/no) [default: no]: ").strip().lower()
         run_mode = True if run_confirm == 'yes' else False
 
-        # Pass all choices to the logic function
         run_resolver_and_install(resolver, packages_to_install, solver_choice, run_mode)
 
     except (ValueError, RuntimeError) as e:
@@ -77,30 +75,26 @@ def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_m
     print(" -> ".join(install_order))
 
     if run_mode:
-        # --- START OF NEW DOWNLOAD LOGIC ---
         print("\n Downloading required packages...")
         for package in install_order:
             print(f"Downloading: {package}")
-            # Use slackpkg to download the package into /var/cache/packages/
-            download_command = f"sudo slackpkg download {package}"
+            download_command = f"slackpkg download {package}"
             os.system(download_command)
         print(" Downloads complete.")
-        # --- END OF NEW DOWNLOAD LOGIC ---
 
-        print("\n RUN MODE ACTIVATED. Attempting real installation... 🚨")
+        print("\n RUN MODE ACTIVATED. Attempting real installation... ")
         for package in install_order:
-            # Modify the command to install from the slackpkg cache directory
-            command = f"sudo installpkg /var/cache/packages/{package}-*.t?z"
+            command = f"installpkg /var/cache/packages/{package}-*.t?z"
             print(f"Executing: {command}")
             os.system(command)
         print("\n Installation commands executed.")
     else:
         print("\n(This was a simulation. To download and install for real, select 'yes'.)")
 
-
 def main():
     """Runs the main menu loop for the application."""
-    resolver = Resolver()
+    # This assumes the 'slackbuilds' repo is in the parent directory
+    resolver = Resolver(sbo_path='../slackbuilds')
     
     while True:
         display_menu()
