@@ -1,37 +1,32 @@
 import os
-from resolver import Resolver
+from resolver import Resolver, InstallationPlan
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 SBO_MIRROR = "https://slackonly.com/pub/packages/15.0-x86_64/"
 
 def display_menu():
-    print("\n--- Slackware Package Resolver Menu ---")
+    print("\n--- Slackware Package Resolver ---")
     print("1. List all available packages")
     print("2. Show dependency tree for a package")
     print("3. Install a package")
     print("4. Exit")
-    print("---------------------------------------")
+    print("------------------------------------")
 
-def list_all_packages(resolver):
-    print("\n Available packages:")
-    packages = resolver.list_packages()
-    for i in range(0, len(packages), 4):
-        print("    ".join(f"{p:<18}" for p in packages[i:i+4]))
+def display_installation_plan(plan: InstallationPlan):
+    print("\n--- Installation Plan ---")
+    if plan.to_install:
+        print(f"  Packages to install: {', '.join(plan.to_install)}")
+    if plan.to_upgrade:
+        print(f"  Packages to upgrade: {', '.join(plan.to_upgrade)}")
+    if plan.already_installed:
+        print(f"  Already installed (latest version): {', '.join(plan.already_installed)}")
+    print("-------------------------")
 
-def show_dependency_tree(resolver):
+def handle_installation_session(resolver: Resolver):
     try:
-        package_name = input("Enter the package name to inspect: ").strip()
-        if not package_name:
-            print("\n Error: Package name cannot be empty.")
-            return
-        print(f"\n Dependency tree for '{package_name}':")
-        explanation = resolver.explain(package_name)
-        print(explanation)
-    except (ValueError, RuntimeError) as e:
-        print(f"\n {e}")
-
-def handle_installation_session(resolver):
-    try:
-        package_names_str = input("Enter package names to install (separated by spaces): ").strip()
+        package_names_str = input("Enter package name(s) to install: ").strip()
         if not package_names_str:
             print("\n Error: Package name cannot be empty.")
             return
@@ -41,51 +36,47 @@ def handle_installation_session(resolver):
         print("1. Topological Sort (Fast, for simple cases)")
         print("2. SAT Solver (Powerful, for complex conflicts)")
         solver_choice = input("Enter solver choice (1-2): ").strip()
-        if solver_choice not in ['1', '2']:
-            print("\n Invalid solver choice. Aborting.")
+        solver_type = 'sat' if solver_choice == '2' else 'topsort'
+
+        print("\n  Creating installation plan...")
+        plan = resolver.create_installation_plan(packages_to_install, solver_type=solver_type)
+        display_installation_plan(plan)
+        
+        if not plan.to_install and not plan.to_upgrade:
+            print("\n All requested packages are already installed and up to date.")
             return
 
-        run_confirm = input("Perform real installation? (yes/no) [default: no]: ").strip().lower()
-        run_mode = True if run_confirm == 'yes' else False
+        confirm = input("\nDo you want to proceed with this plan? (yes/no): ").strip().lower()
+        if confirm == 'yes':
+            execute_plan(resolver, plan)
+        else:
+            print("Aborting.")
 
-        run_resolver_and_install(resolver, packages_to_install, solver_choice, run_mode)
     except (ValueError, RuntimeError) as e:
         print(f"\n {e}")
 
-def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_mode):
-    print(f"\n  Resolving dependencies for: {', '.join(packages_to_install)}...")
-    install_order = []
-    if solver_choice == '1':
-        install_order = resolver.resolve_with_topsort(packages_to_install)
-    else:
-        install_order = resolver.resolve_with_sat(packages_to_install)
+def execute_plan(resolver: Resolver, plan: InstallationPlan):
+    print("\n Executing plan...")
+    all_packages = plan.to_install + plan.to_upgrade
     
-    if not install_order:
-         print("\n Nothing to install or resolve.")
-         return
-
-    print("\n Installation order determined:")
-    print(" -> ".join(install_order))
-    
-    # Download packages even in simulation mode for a better test
-    print("\n Downloading required packages...")
-    download_successful = resolver.download_packages(install_order, SBO_MIRROR, "packages")
-
+    download_successful = resolver.download_packages(all_packages, SBO_MIRROR, "packages")
     if not download_successful:
-        print("\n Error: Halting installation because one or more packages could not be downloaded.")
+        print("\n Error: Halting due to download failure.")
         return
-
+    
     print(" Downloads complete.")
+    print(" Attempting real installation... 🚨")
 
-    if run_mode:
-        print("\n RUN MODE ACTIVATED. Attempting real installation... 🚨")
-        for package in install_order:
-            command = f"installpkg packages/*{package}-*.t?z"
-            print(f"Executing: {command}")
-            os.system(command)
-        print("\n Installation commands executed.")
-    else:
-        print("\n(This was a simulation. No packages were installed.)")
+    for pkg in all_packages:
+        files = resolver.slackware.find_package_files(pkg, "packages")
+        if files:
+            success, msg = resolver.slackware.install_package(files[0])
+            if not success:
+                print(f"   Failed to install {pkg}: {msg}")
+        else:
+            print(f"   Error: Could not find downloaded file for {pkg}")
+    
+    resolver.invalidate_cache()
 
 def main():
     resolver = Resolver(sbo_path='../slackbuilds')
@@ -93,16 +84,23 @@ def main():
         display_menu()
         choice = input("Enter your choice (1-4): ")
         if choice == '1':
-            list_all_packages(resolver)
+            packages = resolver.list_packages()
+            print("\n Available packages:")
+            for i in range(0, len(packages), 4):
+                print("    ".join(f"{p:<18}" for p in packages[i:i+4]))
         elif choice == '2':
-            show_dependency_tree(resolver)
+            try:
+                pkg = input("Enter package name to inspect: ").strip()
+                print(resolver.explain(pkg))
+            except (ValueError, RuntimeError) as e:
+                print(f"\n {e}")
         elif choice == '3':
             handle_installation_session(resolver)
         elif choice == '4':
-            print("\n Exiting the program. Goodbye!")
+            print("\n Exiting.")
             break
         else:
-            print("\n Invalid choice. Please enter a number between 1 and 4.")
+            print("\n Invalid choice.")
 
 if __name__ == "__main__":
     main()

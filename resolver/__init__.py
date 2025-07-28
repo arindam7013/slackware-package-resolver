@@ -1,1 +1,1 @@
-from .resolver import Resolver
+from .resolver import Resolver, InstallationPlan

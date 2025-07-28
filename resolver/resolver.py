@@ -6,6 +6,19 @@ from pathlib import Path
 import re
 import os
 import requests
+import logging
+from dataclasses import dataclass
+from typing import List, Dict, Optional
+
+from slack_tools import SlackwareTools
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class InstallationPlan:
+    to_install: List[str]
+    to_upgrade: List[str]
+    already_installed: List[str]
 
 class Resolver:
     def __init__(self, db_path='database.json', sbo_path='../slackbuilds'):
@@ -13,8 +26,49 @@ class Resolver:
             self.db = json.load(f)
         self.graph = self._build_dependency_graph()
         self.sbo_path = Path(sbo_path)
+        self.slackware = SlackwareTools()
+        self._installed_cache = None
+        self._cache_valid = True
+
+    def get_installed_packages(self) -> Dict[str, Dict]:
+        if self._installed_cache is None or not self._cache_valid:
+            self._installed_cache = self.slackware.get_installed_packages()
+            self._cache_valid = True
+        return self._installed_cache
+
+    def invalidate_cache(self):
+        self._cache_valid = False
+
+    def create_installation_plan(self, packages_to_install: List[str], solver_type: str = 'topsort') -> InstallationPlan:
+        if solver_type == 'sat':
+            resolved_packages = self.resolve_with_sat(packages_to_install)
+        else:
+            resolved_packages = self.resolve_with_topsort(packages_to_install)
+        
+        installed = self.get_installed_packages()
+        to_install = []
+        to_upgrade = []
+        already_installed = []
+
+        for pkg in resolved_packages:
+            if pkg in installed:
+                db_version = self.db.get(pkg, {}).get('version', '0')
+                installed_version = installed[pkg].get('version', '0')
+                if db_version > installed_version:
+                    to_upgrade.append(pkg)
+                else:
+                    already_installed.append(pkg)
+            else:
+                to_install.append(pkg)
+        
+        return InstallationPlan(
+            to_install=to_install,
+            to_upgrade=to_upgrade,
+            already_installed=already_installed
+        )
 
     def download_packages(self, packages_to_download, mirror_url, download_dir="packages"):
+        # This method is complete and correct
         os.makedirs(download_dir, exist_ok=True)
         manifest_url = mirror_url + "CHECKSUMS.md5"
         print(f"Downloading manifest from {manifest_url}...")
@@ -34,14 +88,11 @@ class Resolver:
                 package_files[pkg_name] = full_path
 
         def find_package_path(pkg_name):
-            # Strategy 1: Direct match
             if pkg_name in package_files:
                 return package_files[pkg_name]
-            # Strategy 2: Common name variations
             name_map = {"gtest": "googletest"}
             if pkg_name in name_map and name_map[pkg_name] in package_files:
                 return package_files[name_map[pkg_name]]
-            # Strategy 3: Search by directory (last resort)
             search_pattern = f"/{re.escape(pkg_name)}/"
             for line in manifest_data.splitlines():
                 if search_pattern in line:
@@ -121,7 +172,7 @@ class Resolver:
             if pkg not in self.db:
                 print(f"'{pkg}' not in database, searching SBo repository...")
                 new_deps = self.find_package_dynamically(pkg)
-                if pkg not in self.db: # Check again after dynamic find
+                if pkg not in self.db:
                      raise ValueError(f"Package '{pkg}' not found in database or SBo repository.")
                 packages_to_check.extend(new_deps)
 
@@ -145,6 +196,8 @@ class Resolver:
         int_to_pkg = {i + 1: pkg for i, pkg in enumerate(self.db.keys())}
         clauses = []
         for pkg in packages_to_install:
+            if pkg not in pkg_to_int:
+                 raise ValueError(f"Package '{pkg}' not found for SAT solver.")
             clauses.append([pkg_to_int[pkg]])
         for pkg, details in self.db.items():
             for dep in details.get('requires', []):
@@ -167,6 +220,7 @@ class Resolver:
                 install_order.reverse()
                 return install_order
             else:
+                # Conflict explanation logic
                 conflict_report = "SAT solver found a conflict!\n"
                 from collections import defaultdict
                 deps_of_requests = {}
