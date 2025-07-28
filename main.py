@@ -15,7 +15,7 @@ def display_menu():
 
 def list_all_packages(resolver):
     """Prints a formatted list of all available packages."""
-    print("\n Available packages:")
+    print("\n📦 Available packages:")
     packages = resolver.list_packages()
     for i in range(0, len(packages), 4):
         print("    ".join(f"{p:<18}" for p in packages[i:i+4]))
@@ -81,7 +81,7 @@ def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_m
         resolver.download_packages(install_order, SBO_MIRROR, "packages")
         print(" Downloads complete.")
 
-        print("\n RUN MODE ACTIVATED. Attempting real installation... ")
+        print("\n RUN MODE ACTIVATED. Attempting real installation... 🚨")
         for package in install_order:
             command = f"installpkg packages/{package}-*.t?z"
             print(f"Executing: {command}")
