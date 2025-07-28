@@ -27,21 +27,39 @@ class Resolver:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to download package manifest: {e}")
 
-        # --- START OF FINAL SEARCH LOGIC ---
-        def find_package_path(pkg_name, manifest):
-            """Finds a package path by searching for a directory ending with the package name."""
-            # Search for a pattern like '.../pkg_name/'
+        # --- START OF ROBUST SEARCH LOGIC ---
+        # First, build a complete map of all package prefixes to their full file paths
+        package_files = {}
+        for line in manifest_data.splitlines():
+            parts = line.split()
+            if len(parts) >= 4 and parts[-1].endswith(('.txz', '.tgz')):
+                full_path = parts[-1]
+                pkg_name = Path(full_path).name.split('-')[0]
+                package_files[pkg_name] = full_path
+
+        def find_package_path(pkg_name):
+            """Tries multiple strategies to find a package in the manifest."""
+            # Strategy 1: Direct match (e.g., 'inkscape' -> 'inkscape')
+            if pkg_name in package_files:
+                return package_files[pkg_name]
+            
+            # Strategy 2: Common name variations (e.g., 'gtest' -> 'googletest')
+            name_map = {"gtest": "googletest"}
+            if pkg_name in name_map and name_map[pkg_name] in package_files:
+                return package_files[name_map[pkg_name]]
+            
+            # Strategy 3: Search by directory name in the path
             search_pattern = f"/{re.escape(pkg_name)}/"
-            for line in manifest.splitlines():
+            for line in manifest_data.splitlines():
                 if search_pattern in line:
                     parts = line.split()
                     if len(parts) >= 4:
-                        return parts[-1] # Return the full path
+                        return parts[-1]
             return None
-        # --- END OF FINAL SEARCH LOGIC ---
+        # --- END OF ROBUST SEARCH LOGIC ---
 
         for package in packages_to_download:
-            file_path = find_package_path(package, manifest_data)
+            file_path = find_package_path(package)
             
             if file_path:
                 download_url = mirror_url + file_path.lstrip('./')
@@ -55,9 +73,9 @@ class Resolver:
                             for chunk in r.iter_content(chunk_size=8192):
                                 f.write(chunk)
                 except requests.exceptions.RequestException as e:
-                    print(f"  Warning: Failed to download {package}: {e}")
+                    print(f"⚠️  Warning: Failed to download {package}: {e}")
             else:
-                print(f" Warning: Could not find package '{package}' in the mirror manifest.")
+                print(f"⚠️  Warning: Could not find package '{package}' in the mirror manifest.")
 
     def _build_dependency_graph(self):
         """Builds a directed graph from the dependency database."""
