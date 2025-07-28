@@ -5,7 +5,7 @@ from itertools import combinations
 from pathlib import Path
 import re
 import os
-import requests # Import requests
+import requests
 
 class Resolver:
     def __init__(self, db_path='database.json', sbo_path='../slackbuilds'):
@@ -14,15 +14,10 @@ class Resolver:
         self.graph = self._build_dependency_graph()
         self.sbo_path = Path(sbo_path)
 
-    # ... (Keep all existing methods like _build_dependency_graph, find_package_dynamically, etc.) ...
-    
-    # --- START OF NEW DOWNLOAD METHOD ---
     def download_packages(self, packages_to_download, mirror_url, download_dir="packages"):
         """Downloads a list of SBo packages from a specified mirror."""
-        # Ensure the download directory exists
         os.makedirs(download_dir, exist_ok=True)
         
-        # Download the master file list from the mirror
         manifest_url = mirror_url + "CHECKSUMS.md5"
         print(f"Downloading manifest from {manifest_url}...")
         try:
@@ -32,20 +27,27 @@ class Resolver:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to download package manifest: {e}")
 
-        # Create a mapping of package names to full file paths
-        package_files = {}
-        for line in manifest_data.splitlines():
-            parts = line.split()
-            if len(parts) >= 4 and parts[-1].endswith(('.txz', '.tgz')):
-                full_path = parts[-1]
-                # Extract simple package name (e.g., 'audacity' from './multimedia/audacity/audacity-2.4.2...')
-                pkg_name = Path(full_path).name.split('-')[0]
-                package_files[pkg_name] = full_path
+        # --- START OF UNIVERSAL FIX ---
+        # Create a function to find a package path by its directory name
+        def find_package_path(pkg_name, manifest):
+            # Search for a pattern like '/pkg_name/pkg_name-version.txz'
+            # This is much more reliable than matching the filename prefix
+            pattern = re.compile(f"/{re.escape(pkg_name)}/{re.escape(pkg_name)}[-_a-zA-Z0-9.]+\\.t[gx]z")
+            for line in manifest.splitlines():
+                match = pattern.search(line)
+                if match:
+                    # The path is usually the 4th element (index 3) in CHECKSUMS.md5
+                    # e.g.: md5sum timestamp size path
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        return parts[-1] # Return the full path
+            return None
+        # --- END OF UNIVERSAL FIX ---
 
-        # Download each required package
         for package in packages_to_download:
-            if package in package_files:
-                file_path = package_files[package]
+            file_path = find_package_path(package, manifest_data)
+            
+            if file_path:
                 download_url = mirror_url + file_path.lstrip('./')
                 local_filename = Path(download_dir) / Path(file_path).name
                 
@@ -60,9 +62,8 @@ class Resolver:
                     print(f"⚠️  Warning: Failed to download {package}: {e}")
             else:
                 print(f"⚠️  Warning: Could not find package '{package}' in the mirror manifest.")
-    # --- END OF NEW DOWNLOAD METHOD ---
 
-    # ... (The rest of your Resolver class: resolve_with_topsort, resolve_with_sat, list_packages, etc.) ...
+
     def _build_dependency_graph(self):
         """Builds a directed graph from the dependency database."""
         G = nx.DiGraph()
@@ -82,13 +83,11 @@ class Resolver:
                 package_dir = category / package_name
                 info_file = package_dir / f"{package_name}.info"
                 if info_file.is_file():
-                    # Found the package, now parse it
                     parsed_info = self._parse_info_file(info_file)
                     if "PRGNAM" in parsed_info:
                         pkg_name = parsed_info["PRGNAM"]
                         deps = [dep for dep in parsed_info.get("REQUIRES", "").split() if not dep.startswith('%')]
                         
-                        # Add to our current session's database and graph
                         self.db[pkg_name] = {"version": parsed_info.get("VERSION", "N/A"), "requires": deps}
                         self.graph.add_node(pkg_name)
                         for dep in deps:
@@ -136,7 +135,6 @@ class Resolver:
     def resolve_with_sat(self, packages_to_install):
         """Resolves dependencies using a SAT solver for complex cases."""
         self._ensure_packages_exist(packages_to_install)
-        # The rest of the SAT solver logic remains the same...
         pkg_to_int = {pkg: i + 1 for i, pkg in enumerate(self.db.keys())}
         int_to_pkg = {i + 1: pkg for i, pkg in enumerate(self.db.keys())}
         
@@ -169,7 +167,6 @@ class Resolver:
                 install_order.reverse()
                 return install_order
             else:
-                # Conflict explanation logic
                 conflict_report = "SAT solver found a conflict!\n"
                 from collections import defaultdict
                 deps_of_requests = {}
