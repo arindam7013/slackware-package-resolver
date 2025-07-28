@@ -34,11 +34,14 @@ class Resolver:
                 package_files[pkg_name] = full_path
 
         def find_package_path(pkg_name):
+            # Strategy 1: Direct match
             if pkg_name in package_files:
                 return package_files[pkg_name]
+            # Strategy 2: Common name variations
             name_map = {"gtest": "googletest"}
             if pkg_name in name_map and name_map[pkg_name] in package_files:
                 return package_files[name_map[pkg_name]]
+            # Strategy 3: Search by directory (last resort)
             search_pattern = f"/{re.escape(pkg_name)}/"
             for line in manifest_data.splitlines():
                 if search_pattern in line:
@@ -118,7 +121,7 @@ class Resolver:
             if pkg not in self.db:
                 print(f"'{pkg}' not in database, searching SBo repository...")
                 new_deps = self.find_package_dynamically(pkg)
-                if not new_deps and pkg not in self.db:
+                if pkg not in self.db: # Check again after dynamic find
                      raise ValueError(f"Package '{pkg}' not found in database or SBo repository.")
                 packages_to_check.extend(new_deps)
 
