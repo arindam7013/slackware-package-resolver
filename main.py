@@ -76,14 +76,18 @@ def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_m
 
     if run_mode:
         print("\n Downloading required packages...")
-        for package in install_order:
-            print(f"Downloading: {package}")
-            download_command = f"slackpkg download {package}"
-            os.system(download_command)
+        # --- START OF CORRECTED DOWNLOAD LOGIC ---
+        # Use slackpkg with --download-only flag for precise, non-interactive downloading
+        package_string = " ".join(install_order)
+        download_command = f"slackpkg install --download-only {package_string}"
+        print(f"Executing: {download_command}")
+        os.system(download_command)
+        # --- END OF CORRECTED DOWNLOAD LOGIC ---
         print(" Downloads complete.")
 
         print("\n RUN MODE ACTIVATED. Attempting real installation... ")
         for package in install_order:
+            # The rest of the installation logic is correct
             command = f"installpkg /var/cache/packages/{package}-*.t?z"
             print(f"Executing: {command}")
             os.system(command)
