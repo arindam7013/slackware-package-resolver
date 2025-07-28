@@ -15,7 +15,7 @@ def display_menu():
 
 def list_all_packages(resolver):
     """Prints a formatted list of all available packages."""
-    print("\n📦 Available packages:")
+    print("\n Available packages:")
     packages = resolver.list_packages()
     for i in range(0, len(packages), 4):
         print("    ".join(f"{p:<18}" for p in packages[i:i+4]))
