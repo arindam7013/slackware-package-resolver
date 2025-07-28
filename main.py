@@ -37,16 +37,28 @@ def handle_installation_session(resolver):
             return
         packages_to_install = package_names_str.split()
 
+        print("\nChoose a solver:")
+        print("1. Topological Sort (Fast, for simple cases)")
+        print("2. SAT Solver (Powerful, for complex conflicts)")
+        solver_choice = input("Enter solver choice (1-2): ").strip()
+        if solver_choice not in ['1', '2']:
+            print("\n Invalid solver choice. Aborting.")
+            return
+
         run_confirm = input("Perform real installation? (yes/no) [default: no]: ").strip().lower()
         run_mode = True if run_confirm == 'yes' else False
 
-        run_resolver_and_install(resolver, packages_to_install, run_mode)
+        run_resolver_and_install(resolver, packages_to_install, solver_choice, run_mode)
     except (ValueError, RuntimeError) as e:
         print(f"\n {e}")
 
-def run_resolver_and_install(resolver, packages_to_install, run_mode):
+def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_mode):
     print(f"\n  Resolving dependencies for: {', '.join(packages_to_install)}...")
-    install_order = resolver.resolve_with_topsort(packages_to_install)
+    install_order = []
+    if solver_choice == '1':
+        install_order = resolver.resolve_with_topsort(packages_to_install)
+    else:
+        install_order = resolver.resolve_with_sat(packages_to_install)
     
     if not install_order:
          print("\n Nothing to install or resolve.")
@@ -55,6 +67,7 @@ def run_resolver_and_install(resolver, packages_to_install, run_mode):
     print("\n Installation order determined:")
     print(" -> ".join(install_order))
     
+    # Download packages even in simulation mode for a better test
     print("\n Downloading required packages...")
     download_successful = resolver.download_packages(install_order, SBO_MIRROR, "packages")
 
