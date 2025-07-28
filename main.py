@@ -28,7 +28,7 @@ def handle_installation_session(resolver: Resolver):
     try:
         package_names_str = input("Enter package name(s) to install: ").strip()
         if not package_names_str:
-            print("\n Error: Package name cannot be empty.")
+            print("\nError: Package name cannot be empty.")
             return
         packages_to_install = package_names_str.split()
 
@@ -38,12 +38,12 @@ def handle_installation_session(resolver: Resolver):
         solver_choice = input("Enter solver choice (1-2): ").strip()
         solver_type = 'sat' if solver_choice == '2' else 'topsort'
 
-        print("\n  Creating installation plan...")
+        print("\nCreating installation plan...")
         plan = resolver.create_installation_plan(packages_to_install, solver_type=solver_type)
         display_installation_plan(plan)
         
         if not plan.to_install and not plan.to_upgrade:
-            print("\n All requested packages are already installed and up to date.")
+            print("\nAll requested packages are already installed and up to date.")
             return
 
         confirm = input("\nDo you want to proceed with this plan? (yes/no): ").strip().lower()
@@ -53,28 +53,28 @@ def handle_installation_session(resolver: Resolver):
             print("Aborting.")
 
     except (ValueError, RuntimeError) as e:
-        print(f"\n {e}")
+        print(f"\nError: {e}")
 
 def execute_plan(resolver: Resolver, plan: InstallationPlan):
-    print("\n Executing plan...")
+    print("\nExecuting plan...")
     all_packages = plan.to_install + plan.to_upgrade
     
     download_successful = resolver.download_packages(all_packages, SBO_MIRROR, "packages")
     if not download_successful:
-        print("\n Error: Halting due to download failure.")
+        print("\nError: Halting due to download failure.")
         return
     
-    print(" Downloads complete.")
-    print(" Attempting real installation... 🚨")
+    print("Downloads complete.")
+    print("Attempting real installation...")
 
     for pkg in all_packages:
         files = resolver.slackware.find_package_files(pkg, "packages")
         if files:
             success, msg = resolver.slackware.install_package(files[0])
             if not success:
-                print(f"   Failed to install {pkg}: {msg}")
+                print(f"  Failed to install {pkg}: {msg}")
         else:
-            print(f"   Error: Could not find downloaded file for {pkg}")
+            print(f"  Error: Could not find downloaded file for {pkg}")
     
     resolver.invalidate_cache()
 
@@ -85,7 +85,7 @@ def main():
         choice = input("Enter your choice (1-4): ")
         if choice == '1':
             packages = resolver.list_packages()
-            print("\n Available packages:")
+            print("\nAvailable packages:")
             for i in range(0, len(packages), 4):
                 print("    ".join(f"{p:<18}" for p in packages[i:i+4]))
         elif choice == '2':
@@ -93,14 +93,14 @@ def main():
                 pkg = input("Enter package name to inspect: ").strip()
                 print(resolver.explain(pkg))
             except (ValueError, RuntimeError) as e:
-                print(f"\n {e}")
+                print(f"\nError: {e}")
         elif choice == '3':
             handle_installation_session(resolver)
         elif choice == '4':
-            print("\n Exiting.")
+            print("\nExiting.")
             break
         else:
-            print("\n Invalid choice.")
+            print("\nInvalid choice.")
 
 if __name__ == "__main__":
     main()

@@ -68,7 +68,6 @@ class Resolver:
         )
 
     def download_packages(self, packages_to_download, mirror_url, download_dir="packages"):
-        # This method is complete and correct
         os.makedirs(download_dir, exist_ok=True)
         manifest_url = mirror_url + "CHECKSUMS.md5"
         print(f"Downloading manifest from {manifest_url}...")
@@ -88,11 +87,14 @@ class Resolver:
                 package_files[pkg_name] = full_path
 
         def find_package_path(pkg_name):
+            # Strategy 1: Direct match
             if pkg_name in package_files:
                 return package_files[pkg_name]
+            # Strategy 2: Common name variations
             name_map = {"gtest": "googletest"}
             if pkg_name in name_map and name_map[pkg_name] in package_files:
                 return package_files[name_map[pkg_name]]
+            # Strategy 3: Search by directory (last resort)
             search_pattern = f"/{re.escape(pkg_name)}/"
             for line in manifest_data.splitlines():
                 if search_pattern in line:
@@ -115,9 +117,9 @@ class Resolver:
                             for chunk in r.iter_content(chunk_size=8192):
                                 f.write(chunk)
                 except requests.exceptions.RequestException as e:
-                    print(f"⚠️  Warning: Failed to download {package}: {e}")
+                    print(f"Warning: Failed to download {package}: {e}")
             else:
-                print(f"⚠️  Warning: Could not find package '{package}' in the mirror manifest.")
+                print(f"Warning: Could not find package '{package}' in the mirror manifest.")
                 all_found = False
         return all_found
 
@@ -220,7 +222,6 @@ class Resolver:
                 install_order.reverse()
                 return install_order
             else:
-                # Conflict explanation logic
                 conflict_report = "SAT solver found a conflict!\n"
                 from collections import defaultdict
                 deps_of_requests = {}
