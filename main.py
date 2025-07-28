@@ -58,7 +58,7 @@ def handle_installation_session(resolver):
         print(f"\n {e}")
 
 def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_mode):
-    """Resolves, downloads, and installs packages."""
+    """Resolves dependencies and installs pre-downloaded packages."""
     print(f"\n  Resolving dependencies for: {', '.join(packages_to_install)}...")
     
     install_order = []
@@ -75,25 +75,17 @@ def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_m
     print(" -> ".join(install_order))
 
     if run_mode:
-        print("\n Downloading required packages...")
-        # --- START OF CORRECTED DOWNLOAD LOGIC ---
-        # Use slackpkg with --download-only flag for precise, non-interactive downloading
-        package_string = " ".join(install_order)
-        download_command = f"slackpkg install --download-only {package_string}"
-        print(f"Executing: {download_command}")
-        os.system(download_command)
-        # --- END OF CORRECTED DOWNLOAD LOGIC ---
-        print(" Downloads complete.")
-
         print("\n RUN MODE ACTIVATED. Attempting real installation... ")
+        print("This assumes you have ALREADY downloaded the required .txz packages.")
         for package in install_order:
-            # The rest of the installation logic is correct
-            command = f"installpkg /var/cache/packages/{package}-*.t?z"
+            # This command will look for the downloaded package in the current directory
+            command = f"installpkg {package}-*.t?z"
             print(f"Executing: {command}")
             os.system(command)
         print("\n Installation commands executed.")
     else:
-        print("\n(This was a simulation. To download and install for real, select 'yes'.)")
+        print("\n(This was a simulation. No packages will be installed.)")
+
 
 def main():
     """Runs the main menu loop for the application."""
