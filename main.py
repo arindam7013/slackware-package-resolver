@@ -1,6 +1,9 @@
 import os
 from resolver import Resolver
 
+# Define the mirror for SBo binary packages
+SBO_MIRROR = "https://slackonly.com/pub/packages/15.0-x86_64/"
+
 def display_menu():
     """Prints the main menu options to the console."""
     print("\n--- Slackware Package Resolver Menu ---")
@@ -12,7 +15,7 @@ def display_menu():
 
 def list_all_packages(resolver):
     """Prints a formatted list of all available packages."""
-    print("\n Available packages:")
+    print("\n📦 Available packages:")
     packages = resolver.list_packages()
     for i in range(0, len(packages), 4):
         print("    ".join(f"{p:<18}" for p in packages[i:i+4]))
@@ -58,7 +61,7 @@ def handle_installation_session(resolver):
         print(f"\n {e}")
 
 def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_mode):
-    """Resolves dependencies and installs pre-downloaded packages."""
+    """Resolves, downloads, and installs packages."""
     print(f"\n  Resolving dependencies for: {', '.join(packages_to_install)}...")
     
     install_order = []
@@ -75,21 +78,22 @@ def run_resolver_and_install(resolver, packages_to_install, solver_choice, run_m
     print(" -> ".join(install_order))
 
     if run_mode:
+        # Call the new download method
+        resolver.download_packages(install_order, SBO_MIRROR, "packages")
+        print(" Downloads complete.")
+
         print("\n RUN MODE ACTIVATED. Attempting real installation... ")
-        print("This assumes you have ALREADY downloaded the required .txz packages.")
         for package in install_order:
-            # This command will look for the downloaded package in the current directory
-            command = f"installpkg {package}-*.t?z"
+            # Install from the 'packages' directory
+            command = f"installpkg packages/{package}-*.t?z"
             print(f"Executing: {command}")
             os.system(command)
         print("\n Installation commands executed.")
     else:
-        print("\n(This was a simulation. No packages will be installed.)")
-
+        print("\n(This was a simulation. No packages will be downloaded or installed.)")
 
 def main():
     """Runs the main menu loop for the application."""
-    # This assumes the 'slackbuilds' repo is in the parent directory
     resolver = Resolver(sbo_path='../slackbuilds')
     
     while True:

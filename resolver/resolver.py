@@ -5,15 +5,64 @@ from itertools import combinations
 from pathlib import Path
 import re
 import os
+import requests # Import requests
 
 class Resolver:
     def __init__(self, db_path='database.json', sbo_path='../slackbuilds'):
-        """Initializes the resolver by loading the package database."""
         with open(db_path, 'r') as f:
             self.db = json.load(f)
         self.graph = self._build_dependency_graph()
         self.sbo_path = Path(sbo_path)
 
+    # ... (Keep all existing methods like _build_dependency_graph, find_package_dynamically, etc.) ...
+    
+    # --- START OF NEW DOWNLOAD METHOD ---
+    def download_packages(self, packages_to_download, mirror_url, download_dir="packages"):
+        """Downloads a list of SBo packages from a specified mirror."""
+        # Ensure the download directory exists
+        os.makedirs(download_dir, exist_ok=True)
+        
+        # Download the master file list from the mirror
+        manifest_url = mirror_url + "CHECKSUMS.md5"
+        print(f"Downloading manifest from {manifest_url}...")
+        try:
+            response = requests.get(manifest_url)
+            response.raise_for_status()
+            manifest_data = response.text
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Failed to download package manifest: {e}")
+
+        # Create a mapping of package names to full file paths
+        package_files = {}
+        for line in manifest_data.splitlines():
+            parts = line.split()
+            if len(parts) >= 4 and parts[-1].endswith(('.txz', '.tgz')):
+                full_path = parts[-1]
+                # Extract simple package name (e.g., 'audacity' from './multimedia/audacity/audacity-2.4.2...')
+                pkg_name = Path(full_path).name.split('-')[0]
+                package_files[pkg_name] = full_path
+
+        # Download each required package
+        for package in packages_to_download:
+            if package in package_files:
+                file_path = package_files[package]
+                download_url = mirror_url + file_path.lstrip('./')
+                local_filename = Path(download_dir) / Path(file_path).name
+                
+                print(f"Downloading {package} from {download_url}...")
+                try:
+                    with requests.get(download_url, stream=True) as r:
+                        r.raise_for_status()
+                        with open(local_filename, 'wb') as f:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                f.write(chunk)
+                except requests.exceptions.RequestException as e:
+                    print(f"⚠️  Warning: Failed to download {package}: {e}")
+            else:
+                print(f"⚠️  Warning: Could not find package '{package}' in the mirror manifest.")
+    # --- END OF NEW DOWNLOAD METHOD ---
+
+    # ... (The rest of your Resolver class: resolve_with_topsort, resolve_with_sat, list_packages, etc.) ...
     def _build_dependency_graph(self):
         """Builds a directed graph from the dependency database."""
         G = nx.DiGraph()
