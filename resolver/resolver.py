@@ -15,6 +15,7 @@ class Resolver:
         self.sbo_path = Path(sbo_path)
 
     def download_packages(self, packages_to_download, mirror_url, download_dir="packages"):
+        """Downloads a list of SBo packages from a specified mirror."""
         os.makedirs(download_dir, exist_ok=True)
         manifest_url = mirror_url + "CHECKSUMS.md5"
         print(f"Downloading manifest from {manifest_url}...")
@@ -34,14 +35,11 @@ class Resolver:
                 package_files[pkg_name] = full_path
 
         def find_package_path(pkg_name):
-            # Strategy 1: Direct match
             if pkg_name in package_files:
                 return package_files[pkg_name]
-            # Strategy 2: Common name variations
             name_map = {"gtest": "googletest"}
             if pkg_name in name_map and name_map[pkg_name] in package_files:
                 return package_files[name_map[pkg_name]]
-            # Strategy 3: Search by directory (last resort)
             search_pattern = f"/{re.escape(pkg_name)}/"
             for line in manifest_data.splitlines():
                 if search_pattern in line:
@@ -50,6 +48,7 @@ class Resolver:
                         return parts[-1]
             return None
 
+        all_found = True
         for package in packages_to_download:
             file_path = find_package_path(package)
             if file_path:
@@ -66,6 +65,8 @@ class Resolver:
                     print(f"⚠️  Warning: Failed to download {package}: {e}")
             else:
                 print(f"⚠️  Warning: Could not find package '{package}' in the mirror manifest.")
+                all_found = False
+        return all_found
 
     def _build_dependency_graph(self):
         G = nx.DiGraph()
@@ -135,56 +136,6 @@ class Resolver:
             return install_order
         except nx.NetworkXUnfeasible:
             raise RuntimeError("Topological sort failed. The request contains a circular dependency.")
-
-    def resolve_with_sat(self, packages_to_install):
-        self._ensure_packages_exist(packages_to_install)
-        # SAT solver logic remains the same
-        pkg_to_int = {pkg: i + 1 for i, pkg in enumerate(self.db.keys())}
-        int_to_pkg = {i + 1: pkg for i, pkg in enumerate(self.db.keys())}
-        clauses = []
-        for pkg in packages_to_install:
-            clauses.append([pkg_to_int[pkg]])
-        for pkg, details in self.db.items():
-            for dep in details.get('requires', []):
-                if dep in pkg_to_int:
-                    clauses.append([-pkg_to_int[pkg], pkg_to_int[dep]])
-        base_packages = {}
-        for pkg, details in self.db.items():
-            base = details.get("base_package")
-            if base:
-                base_packages.setdefault(base, []).append(pkg)
-        for base, versions in base_packages.items():
-            for v1, v2 in combinations(versions, 2):
-                clauses.append([-pkg_to_int[v1], -pkg_to_int[v2]])
-        with Glucose3(bootstrap_with=clauses) as solver:
-            if solver.solve():
-                model = solver.get_model()
-                solution_packages = [int_to_pkg[i] for i in model if i > 0]
-                subgraph = self.graph.subgraph(solution_packages)
-                install_order = list(nx.topological_sort(subgraph))
-                install_order.reverse()
-                return install_order
-            else:
-                # Conflict explanation logic remains the same
-                conflict_report = "SAT solver found a conflict!\n"
-                from collections import defaultdict
-                deps_of_requests = {}
-                for pkg in packages_to_install:
-                    deps = nx.descendants(self.graph, pkg)
-                    deps.add(pkg)
-                    deps_of_requests[pkg] = deps
-                base_conflicts = defaultdict(list)
-                for pkg, deps in deps_of_requests.items():
-                    for dep in deps:
-                        base = self.db.get(dep, {}).get("base_package")
-                        if base:
-                            base_conflicts[base].append(f"'{dep}' (required by '{pkg}')")
-                for base, sources in base_conflicts.items():
-                    if len(set(sources)) > 1:
-                        conflict_report += f"  - Reason: Multiple versions of '{base}' are required.\n"
-                        for source in sorted(list(set(sources))):
-                            conflict_report += f"    - {source}\n"
-                raise RuntimeError(conflict_report)
 
     def list_packages(self):
         return sorted(self.db.keys())
