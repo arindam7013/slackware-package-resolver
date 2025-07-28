@@ -15,7 +15,6 @@ class Resolver:
         self.sbo_path = Path(sbo_path)
 
     def download_packages(self, packages_to_download, mirror_url, download_dir="packages"):
-        # This method is already correct from the previous step
         os.makedirs(download_dir, exist_ok=True)
         manifest_url = mirror_url + "CHECKSUMS.md5"
         print(f"Downloading manifest from {manifest_url}...")
@@ -35,11 +34,14 @@ class Resolver:
                 package_files[pkg_name] = full_path
 
         def find_package_path(pkg_name):
+            # Strategy 1: Direct match
             if pkg_name in package_files:
                 return package_files[pkg_name]
+            # Strategy 2: Common name variations
             name_map = {"gtest": "googletest"}
             if pkg_name in name_map and name_map[pkg_name] in package_files:
                 return package_files[name_map[pkg_name]]
+            # Strategy 3: Search by directory (last resort)
             search_pattern = f"/{re.escape(pkg_name)}/"
             for line in manifest_data.splitlines():
                 if search_pattern in line:
@@ -53,7 +55,7 @@ class Resolver:
             if file_path:
                 download_url = mirror_url + file_path.lstrip('./')
                 local_filename = Path(download_dir) / Path(file_path).name
-                print(f"Downloading {package} from {download_url}...")
+                print(f"Downloading {package} ({Path(file_path).name})...")
                 try:
                     with requests.get(download_url, stream=True) as r:
                         r.raise_for_status()
@@ -61,9 +63,9 @@ class Resolver:
                             for chunk in r.iter_content(chunk_size=8192):
                                 f.write(chunk)
                 except requests.exceptions.RequestException as e:
-                    print(f"  Warning: Failed to download {package}: {e}")
+                    print(f"⚠️  Warning: Failed to download {package}: {e}")
             else:
-                print(f"  Warning: Could not find package '{package}' in the mirror manifest.")
+                print(f"⚠️  Warning: Could not find package '{package}' in the mirror manifest.")
 
     def _build_dependency_graph(self):
         G = nx.DiGraph()
@@ -73,11 +75,9 @@ class Resolver:
                 G.add_edge(package, dependency)
         return G
     
-    # --- START OF CORRECTED PARSING LOGIC ---
     def find_package_dynamically(self, package_name):
         if not self.sbo_path.is_dir():
-            return False
-
+            return []
         for category in self.sbo_path.iterdir():
             if category.is_dir():
                 package_dir = category / package_name
@@ -86,21 +86,17 @@ class Resolver:
                     parsed_info = self._parse_info_file(info_file)
                     if "PRGNAM" in parsed_info:
                         pkg_name = parsed_info["PRGNAM"]
-                        
-                        # Check both REQUIRES and SLACKBOLT_REQUIRES for dependencies
                         requires_str = parsed_info.get("REQUIRES", "") or parsed_info.get("SLACKBOLT_REQUIRES", "")
                         deps = [dep for dep in requires_str.split() if not dep.startswith('%')]
-                        
                         self.db[pkg_name] = {"version": parsed_info.get("VERSION", "N/A"), "requires": deps}
                         self.graph.add_node(pkg_name)
                         for dep in deps:
                             self.graph.add_edge(pkg_name, dep)
-                        return True
-        return False
+                        return deps
+        return []
 
     def _parse_info_file(self, file_path):
         info = {}
-        # Add SLACKBOLT_REQUIRES to the keys we look for
         keys_to_find = ["PRGNAM", "VERSION", "REQUIRES", "SLACKBOLT_REQUIRES"]
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
@@ -110,23 +106,21 @@ class Resolver:
                     if key in keys_to_find:
                         info[key] = value
         return info
-    # --- END OF CORRECTED PARSING LOGIC ---
 
     def _ensure_packages_exist(self, packages):
-        for pkg in packages:
+        packages_to_check = list(packages)
+        checked_packages = set()
+        while packages_to_check:
+            pkg = packages_to_check.pop(0)
+            if pkg in checked_packages:
+                continue
+            checked_packages.add(pkg)
             if pkg not in self.db:
                 print(f"'{pkg}' not in database, searching SBo repository...")
-                if not self.find_package_dynamically(pkg):
-                    raise ValueError(f"Package '{pkg}' not found in database or SBo repository.")
-        # Recursively ensure all dependencies are also checked and loaded
-        all_deps = set()
-        for pkg in packages:
-            all_deps.update(nx.descendants(self.graph, pkg))
-        
-        # This check is crucial: if new deps were found, ensure they are loaded too
-        new_deps_to_check = [dep for dep in all_deps if dep not in self.db]
-        if new_deps_to_check:
-            self._ensure_packages_exist(new_deps_to_check)
+                new_deps = self.find_package_dynamically(pkg)
+                if not new_deps and pkg not in self.db:
+                     raise ValueError(f"Package '{pkg}' not found in database or SBo repository.")
+                packages_to_check.extend(new_deps)
 
     def resolve_with_topsort(self, packages_to_install):
         self._ensure_packages_exist(packages_to_install)
@@ -134,7 +128,6 @@ class Resolver:
         for pkg in packages_to_install:
             nodes_to_include.add(pkg)
             nodes_to_include.update(nx.descendants(self.graph, pkg))
-        
         subgraph = self.graph.subgraph(nodes_to_include)
         try:
             install_order = list(nx.topological_sort(subgraph))
@@ -145,28 +138,24 @@ class Resolver:
 
     def resolve_with_sat(self, packages_to_install):
         self._ensure_packages_exist(packages_to_install)
+        # SAT solver logic remains the same
         pkg_to_int = {pkg: i + 1 for i, pkg in enumerate(self.db.keys())}
         int_to_pkg = {i + 1: pkg for i, pkg in enumerate(self.db.keys())}
-        
         clauses = []
         for pkg in packages_to_install:
             clauses.append([pkg_to_int[pkg]])
-
         for pkg, details in self.db.items():
             for dep in details.get('requires', []):
                 if dep in pkg_to_int:
                     clauses.append([-pkg_to_int[pkg], pkg_to_int[dep]])
-        
         base_packages = {}
         for pkg, details in self.db.items():
             base = details.get("base_package")
             if base:
                 base_packages.setdefault(base, []).append(pkg)
-        
         for base, versions in base_packages.items():
             for v1, v2 in combinations(versions, 2):
                 clauses.append([-pkg_to_int[v1], -pkg_to_int[v2]])
-
         with Glucose3(bootstrap_with=clauses) as solver:
             if solver.solve():
                 model = solver.get_model()
@@ -176,6 +165,7 @@ class Resolver:
                 install_order.reverse()
                 return install_order
             else:
+                # Conflict explanation logic remains the same
                 conflict_report = "SAT solver found a conflict!\n"
                 from collections import defaultdict
                 deps_of_requests = {}
