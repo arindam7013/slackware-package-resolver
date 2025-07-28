@@ -27,22 +27,18 @@ class Resolver:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to download package manifest: {e}")
 
-        # --- START OF UNIVERSAL FIX ---
-        # Create a function to find a package path by its directory name
+        # --- START OF FINAL SEARCH LOGIC ---
         def find_package_path(pkg_name, manifest):
-            # Search for a pattern like '/pkg_name/pkg_name-version.txz'
-            # This is much more reliable than matching the filename prefix
-            pattern = re.compile(f"/{re.escape(pkg_name)}/{re.escape(pkg_name)}[-_a-zA-Z0-9.]+\\.t[gx]z")
+            """Finds a package path by searching for a directory ending with the package name."""
+            # Search for a pattern like '.../pkg_name/'
+            search_pattern = f"/{re.escape(pkg_name)}/"
             for line in manifest.splitlines():
-                match = pattern.search(line)
-                if match:
-                    # The path is usually the 4th element (index 3) in CHECKSUMS.md5
-                    # e.g.: md5sum timestamp size path
+                if search_pattern in line:
                     parts = line.split()
                     if len(parts) >= 4:
                         return parts[-1] # Return the full path
             return None
-        # --- END OF UNIVERSAL FIX ---
+        # --- END OF FINAL SEARCH LOGIC ---
 
         for package in packages_to_download:
             file_path = find_package_path(package, manifest_data)
@@ -59,10 +55,9 @@ class Resolver:
                             for chunk in r.iter_content(chunk_size=8192):
                                 f.write(chunk)
                 except requests.exceptions.RequestException as e:
-                    print(f"⚠️  Warning: Failed to download {package}: {e}")
+                    print(f"  Warning: Failed to download {package}: {e}")
             else:
-                print(f"⚠️  Warning: Could not find package '{package}' in the mirror manifest.")
-
+                print(f" Warning: Could not find package '{package}' in the mirror manifest.")
 
     def _build_dependency_graph(self):
         """Builds a directed graph from the dependency database."""
