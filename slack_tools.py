@@ -67,6 +67,40 @@ class SlackwareTools:
 
     def find_package_files(self, package_name: str, cache_dir: str) -> List[str]:
         """Finds downloaded package files that match a given package name."""
-        # Use a more robust glob pattern to find the file
-        pattern = f"{cache_dir}/*{package_name}-*.t?z"
-        return glob.glob(pattern)
+        # Enhanced pattern matching for better file finding
+        patterns = [
+            f"{cache_dir}/{package_name}-*.t?z",           # Exact name match
+            f"{cache_dir}/*{package_name}*.t?z",           # Contains name
+            f"{cache_dir}/{package_name.lower()}-*.t?z",   # Lowercase exact
+            f"{cache_dir}/*{package_name.lower()}*.t?z",   # Contains lowercase
+        ]
+        
+        found_files = []
+        for pattern in patterns:
+            matches = glob.glob(pattern)
+            if matches:
+                # Prefer exact matches by sorting
+                matches.sort(key=lambda x: (
+                    not os.path.basename(x).lower().startswith(package_name.lower()),
+                    x
+                ))
+                found_files.extend(matches)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_files = []
+        for f in found_files:
+            if f not in seen:
+                seen.add(f)
+                unique_files.append(f)
+        
+        if unique_files:
+            print(f"  Found package files for {package_name}: {[os.path.basename(f) for f in unique_files]}")
+        else:
+            print(f"  No package files found for {package_name} in {cache_dir}")
+            # Debug: show what files are actually there
+            all_files = glob.glob(f"{cache_dir}/*.t?z")
+            if all_files:
+                print(f"  Available files: {[os.path.basename(f) for f in all_files[:5]]}{'...' if len(all_files) > 5 else ''}")
+        
+        return unique_files

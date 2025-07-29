@@ -67,6 +67,44 @@ class Resolver:
             already_installed=already_installed
         )
 
+    def debug_available_packages(self, mirror_url, search_term=None):
+        """Debug function to see what packages are actually available"""
+        manifest_url = mirror_url + "CHECKSUMS.md5"
+        try:
+            response = requests.get(manifest_url, timeout=30)
+            lines = response.text.splitlines()
+            
+            print(f" Found {len(lines)} entries in manifest")
+            
+            if search_term:
+                print(f" Searching for '{search_term}':")
+                matches = []
+                for line in lines:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[-1].endswith(('.txz', '.tgz')):
+                        filename = parts[-1]
+                        if search_term.lower() in filename.lower():
+                            matches.append(filename)
+                
+                if matches:
+                    print(f"  Found {len(matches)} potential matches:")
+                    for match in matches[:10]:  # Show first 10
+                        print(f"    {Path(match).name}")
+                else:
+                    print(f"  No matches found for '{search_term}'")
+            else:
+                print(" Sample package entries:")
+                count = 0
+                for line in lines[:20]:  # Show first 20 entries
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[-1].endswith(('.txz', '.tgz')):
+                        filename = parts[-1]
+                        print(f"  {Path(filename).name}")
+                        count += 1
+            
+        except Exception as e:
+            print(f" Debug failed: {e}")
+
     def download_packages(self, packages_to_download, mirror_url, download_dir="packages"):
         os.makedirs(download_dir, exist_ok=True)
         manifest_url = mirror_url + "CHECKSUMS.md5"
@@ -107,29 +145,13 @@ class Resolver:
                 print(f"  Found exact match: {package_files[pkg_name]}")
                 return package_files[pkg_name]
             
-            # Strategy 2: Case-insensitive match
+            # Strategy 2: Case-insensitive exact match
             for key, value in package_files.items():
                 if key.lower() == pkg_name.lower():
                     print(f"  Found case-insensitive match: {value}")
                     return value
             
-            # Strategy 3: Partial match (contains)
-            matches = []
-            for key, value in package_files.items():
-                if pkg_name.lower() in key.lower() or key.lower() in pkg_name.lower():
-                    matches.append((key, value))
-            
-            if matches:
-                # Prefer exact substring matches
-                for key, value in matches:
-                    if pkg_name.lower() == key.lower():
-                        print(f"  Found partial exact match: {value}")
-                        return value
-                # Use first match if no exact match
-                print(f"  Found partial match: {matches[0][1]} (for {matches[0][0]})")
-                return matches[0][1]
-            
-            # Strategy 4: Common name variations
+            # Strategy 3: Common name variations (check before partial matching)
             name_variations = {
                 "gtest": ["googletest", "gtest"],
                 "lua": ["lua", "lua5.1", "lua53", "lua54"],
@@ -144,7 +166,7 @@ class Resolver:
                     print(f"  Found variation match: {package_files[variation]}")
                     return package_files[variation]
             
-            # Strategy 5: Directory-based search
+            # Strategy 4: Directory-based search (most reliable for exact matches)
             search_patterns = [
                 f"/{re.escape(pkg_name)}/",
                 f"/{re.escape(pkg_name.lower())}/",
@@ -158,6 +180,31 @@ class Resolver:
                         if len(parts) >= 2 and parts[-1].endswith(('.txz', '.tgz', '.tbz', '.tlz')):
                             print(f"  Found directory-based match: {parts[-1]}")
                             return parts[-1]
+            
+            # Strategy 5: Smart partial matching (more restrictive)
+            # Only match if the package name is a significant part of the key
+            good_matches = []
+            for key, value in package_files.items():
+                key_lower = key.lower()
+                pkg_lower = pkg_name.lower()
+                
+                # Check for meaningful matches
+                if (pkg_lower in key_lower and len(pkg_lower) >= 3 and 
+                    len(pkg_lower) / len(key_lower) > 0.5):  # Package name should be at least 50% of the key
+                    good_matches.append((key, value))
+                elif (key_lower in pkg_lower and len(key_lower) >= 3 and 
+                      len(key_lower) / len(pkg_lower) > 0.5):
+                    good_matches.append((key, value))
+            
+            if good_matches:
+                # Prefer matches where package name is at the start
+                for key, value in good_matches:
+                    if key.lower().startswith(pkg_name.lower()) or pkg_name.lower().startswith(key.lower()):
+                        print(f"  Found smart partial match: {value} (for {key})")
+                        return value
+                # Use first good match if no prefix match
+                print(f"  Found partial match: {good_matches[0][1]} (for {good_matches[0][0]})")
+                return good_matches[0][1]
             
             print(f"  No match found for: {pkg_name}")
             return None

@@ -40,7 +40,7 @@ def find_working_mirror():
     
     for mirror in POTENTIAL_MIRRORS:
         if test_mirror(mirror):
-            print(f"✓ Using working mirror: {mirror}")
+            print(f" Using working mirror: {mirror}")
             return mirror
     
     # If no mirrors work, let user specify manually
@@ -65,7 +65,8 @@ def display_menu():
     print("2. Show dependency tree for a package")
     print("3. Install a package")
     print("4. Test mirror connectivity")
-    print("5. Exit")
+    print("5. Debug package search")
+    print("6. Exit")
     print("------------------------------------")
 
 def display_installation_plan(plan: InstallationPlan):
@@ -155,6 +156,14 @@ def test_mirror_connectivity():
         SBO_MIRROR = new_mirror
         print(f"Updated to: {SBO_MIRROR}")
 
+def debug_package_search(resolver: Resolver):
+    """Debug function to help find packages"""
+    search_term = input("Enter package name to search for in mirror: ").strip()
+    if search_term:
+        resolver.debug_available_packages(SBO_MIRROR, search_term)
+    else:
+        resolver.debug_available_packages(SBO_MIRROR)
+
 def main():
     print(" Slackware Package Resolver")
     print("=" * 40)
@@ -168,7 +177,7 @@ def main():
     
     while True:
         display_menu()
-        choice = input("Enter your choice (1-5): ").strip()
+        choice = input("Enter your choice (1-6): ").strip()
         
         if choice == '1':
             packages = resolver.list_packages()
@@ -194,11 +203,14 @@ def main():
             test_mirror_connectivity()
             
         elif choice == '5':
+            debug_package_search(resolver)
+            
+        elif choice == '6':
             print("\n Goodbye!")
             break
             
         else:
-            print("\n Invalid choice. Please enter a number between 1-5.")
+            print("\n Invalid choice. Please enter a number between 1-6.")
 
 if __name__ == "__main__":
     main()
