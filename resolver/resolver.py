@@ -125,33 +125,32 @@ class Resolver:
             
             parts = line.split()
             if len(parts) >= 2:
-                filename = parts[-1]  # Last part is usually the filename
+                filename = parts[-1]  
                 if filename.endswith(('.txz', '.tgz', '.tbz', '.tlz')):
-                    # Extract package name from filename
-                    # Handle various naming patterns
+                    
                     basename = Path(filename).name
                     
-                    # Try different extraction methods
+                    
                     pkg_names = self._extract_package_names(basename)
                     for pkg_name in pkg_names:
-                        if pkg_name not in package_files:  # Don't overwrite existing entries
+                        if pkg_name not in package_files:  
                             package_files[pkg_name] = filename
 
         def find_package_path(pkg_name):
             print(f"Searching for package: {pkg_name}")
             
-            # Strategy 1: Exact match
+            
             if pkg_name in package_files:
                 print(f"  Found exact match: {package_files[pkg_name]}")
                 return package_files[pkg_name]
             
-            # Strategy 2: Case-insensitive exact match
+            
             for key, value in package_files.items():
                 if key.lower() == pkg_name.lower():
                     print(f"  Found case-insensitive match: {value}")
                     return value
             
-            # Strategy 3: Common name variations (check before partial matching)
+            
             name_variations = {
                 "gtest": ["googletest", "gtest"],
                 "lua": ["lua", "lua5.1", "lua53", "lua54"],
@@ -166,7 +165,7 @@ class Resolver:
                     print(f"  Found variation match: {package_files[variation]}")
                     return package_files[variation]
             
-            # Strategy 4: Directory-based search (most reliable for exact matches)
+            
             search_patterns = [
                 f"/{re.escape(pkg_name)}/",
                 f"/{re.escape(pkg_name.lower())}/",
@@ -181,8 +180,7 @@ class Resolver:
                             print(f"  Found directory-based match: {parts[-1]}")
                             return parts[-1]
             
-            # Strategy 5: Smart partial matching (more restrictive)
-            # Only match if the package name is a significant part of the key
+            
             good_matches = []
             for key, value in package_files.items():
                 key_lower = key.lower()
@@ -222,12 +220,12 @@ class Resolver:
                         with open(local_filename, 'wb') as f:
                             for chunk in r.iter_content(chunk_size=8192):
                                 f.write(chunk)
-                    print(f"  ✓ Downloaded {local_filename}")
+                    print(f" Downloaded {local_filename}")
                 except requests.exceptions.RequestException as e:
-                    print(f"  ✗ Failed to download {package}: {e}")
+                    print(f" Failed to download {package}: {e}")
                     all_found = False
             else:
-                print(f"  ✗ Could not find package '{package}' in the mirror manifest.")
+                print(f"  Could not find package '{package}' in the mirror manifest.")
                 all_found = False
         return all_found
 
@@ -253,8 +251,7 @@ class Resolver:
             if len(parts) >= 2 and not re.match(r'^\d', parts[1]):  # Not a version
                 names.append(f"{parts[0]}-{parts[1]}")
         
-        # Add the full base name without version/arch/build
-        # Try to identify version patterns
+        
         version_match = re.search(r'-(\d+\.[\d\w\.\-]+)-[\w\d]+-\d+$', base)
         if version_match:
             pkg_name = base[:version_match.start()]

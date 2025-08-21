@@ -43,7 +43,7 @@ def find_working_mirror():
             print(f" Using working mirror: {mirror}")
             return mirror
     
-    # If no mirrors work, let user specify manually
+    
     print("\n No working mirrors found automatically.")
     print("Please visit https://packages.slackonly.com/ to find the correct URL structure.")
     
@@ -56,7 +56,7 @@ def find_working_mirror():
         print(f"Using default mirror (may not work): {POTENTIAL_MIRRORS[0]}")
         return POTENTIAL_MIRRORS[0]
 
-# Find working mirror at startup
+
 SBO_MIRROR = find_working_mirror()
 
 def display_menu():

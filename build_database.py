@@ -33,7 +33,7 @@ def main(sbo_path_str):
         print(f" Error: The provided SlackBuilds path does not exist: {sbo_path}")
         sys.exit(1)
 
-    print(f"🔍 Starting scan of SlackBuilds repository at: {sbo_path}")
+    print(f" Starting scan of SlackBuilds repository at: {sbo_path}")
     package_db = {}
 
     for root, dirs, files in os.walk(sbo_path):
