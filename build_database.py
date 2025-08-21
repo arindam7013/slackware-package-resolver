@@ -25,9 +25,7 @@ def parse_info_file(file_path):
     return info
 
 def main(sbo_path_str):
-    """
-    Main function to walk the SBo repo and build the dependency database.
-    """
+    
     sbo_path = Path(sbo_path_str)
     if not sbo_path.is_dir():
         print(f" Error: The provided SlackBuilds path does not exist: {sbo_path}")
@@ -47,11 +45,10 @@ def main(sbo_path_str):
                     if "PRGNAM" in parsed_info:
                         package_name = parsed_info["PRGNAM"]
                         
-                        # Get the list of dependencies
+                        
                         raw_dependencies = parsed_info.get("REQUIRES", "").split()
                         
-                        # --- THIS IS THE FIX ---
-                        # Filter out any items that start with '%', like %README%
+                        
                         cleaned_dependencies = [dep for dep in raw_dependencies if not dep.startswith('%')]
                         
                         package_db[package_name] = {

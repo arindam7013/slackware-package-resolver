@@ -5,7 +5,7 @@ import requests
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
-# Potential SlackOnly mirror URLs to try
+
 POTENTIAL_MIRRORS = [
     "https://packages.slackonly.com/pub/packages/15.0-x86_64/",
     "https://slackonly.com/pub/packages/15.0-x86_64/",
@@ -20,8 +20,8 @@ def test_mirror(mirror_url):
     try:
         response = requests.get(mirror_url + "CHECKSUMS.md5", timeout=15)
         if response.status_code == 200:
-            # Also check if it has actual content
-            if len(response.text) > 100:  # Basic sanity check
+            
+            if len(response.text) > 100:  
                 print(f"   Mirror is working and has content")
                 return True
             else:
@@ -35,7 +35,7 @@ def test_mirror(mirror_url):
         return False
 
 def find_working_mirror():
-    """Find the first working mirror from the list"""
+    
     print(" Searching for working SlackOnly mirror...")
     
     for mirror in POTENTIAL_MIRRORS:
@@ -157,7 +157,7 @@ def test_mirror_connectivity():
         print(f"Updated to: {SBO_MIRROR}")
 
 def debug_package_search(resolver: Resolver):
-    """Debug function to help find packages"""
+    
     search_term = input("Enter package name to search for in mirror: ").strip()
     if search_term:
         resolver.debug_available_packages(SBO_MIRROR, search_term)
